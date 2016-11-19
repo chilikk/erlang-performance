@@ -1,0 +1,106 @@
+#!/usr/bin/env escript
+
+main(Opts) ->
+    N = try [N0] = Opts, list_to_integer(N0)
+        catch error:_ -> 100000
+        end,
+    io:format("N = ~B~n", [N]),
+    L1 = [ 0 || _ <- lists:seq(0, N) ],
+    Deep = lists:foldl(fun(E, Acc) -> [Acc|[E]] end,[],L1),
+    Improper = lists:foldl(fun(E, Acc) -> [Acc|E] end,[],L1),
+    B1 = list_to_binary(L1),
+    A1 = array:from_list(L1),
+    L2 = [ 0 || _ <- L1 ],
+    B2 = list_to_binary(L2),
+    L3 = [ 1 || _ <- L1 ],
+    B3 = list_to_binary(L3),
+    TestFunsMap = #{
+      array_from_list => fun() -> array:from_list(L1), ok end,
+      array_to_list => fun() -> array:to_list(A1), ok end,
+      array_foldl => fun() -> array:foldl(fun(_, _, _) -> ok end, ok, A1) end,
+      array_foldr => fun() -> array:foldr(fun(_, _, _) -> ok end, ok, A1) end,
+      array_get_middle => fun() -> array:get(N div 2, A1) end,
+      array_set_middle => fun() -> array:set(N div 2, 1, A1), ok end,
+      binary_equality => fun() -> B1 =:= B2 end,
+      binary_inequality => fun() -> B1 =:= B3 end,
+      binary_to_list => fun() -> _ = binary_to_list(B1), ok end,
+      binary_size => fun() -> size(B1) end,
+      binary_byte_size => fun() -> byte_size(B1) end,
+      binary_at_first => fun() -> binary:at(B1, 1), ok end,
+      binary_at_middle => fun() -> binary:at(B1, N div 2), ok end,
+      binary_at_last => fun() -> binary:at(B1, N), ok end,
+      binary_append_one => fun() -> _ = <<B1/binary, 0>>, ok end,
+      binary_append_binary => fun() -> _ = <<B1/binary, B3/binary>>, ok end,
+      binary_pattern_match_one => fun() -> <<_X:1/binary, _/binary>> = B1,
+                                           ok end,
+      binary_pattern_match_half => fun() -> M = N div 2,
+                                            <<_X:M/binary, _/binary>> = B1,
+                                            ok end,
+      binary_pattern_match_whole => fun() -> <<_X:N/binary, _/binary>> = B1,
+                                             ok end,
+      binary_iterate => fun() -> binary_iterate(fun(_) -> ok end, B1) end,
+      binary_lcp_self => fun() -> binary:longest_common_prefix([B1, B1]) end,
+      list_equality => fun() -> L1 =:= L2 end,
+      list_inequality => fun() -> L1 =:= L3 end,
+      list_to_binary => fun() -> _ = list_to_binary(L1), ok end,
+      list_comprehension => fun() -> _ = [ 0 || _ <- L1 ], ok end,
+      list_insert_first => fun() -> _ = [0|L1], ok end,
+      list_pattern_match => fun() -> [_|_] = L1, ok end,
+      lists_seq => fun() -> lists:seq(0, N), ok end,
+      lists_reverse => fun() -> lists:reverse(L1), ok end,
+      lists_flatten_flat => fun() -> lists:flatten(L1), ok end,
+      lists_flatten_deep => fun() -> lists:flatten(Deep), ok end,
+      lists_filter => fun() -> lists:filter(fun(_) -> true end, L1), ok end,
+      lists_map => fun() -> lists:map(fun(_) -> 0 end, L1), ok end,
+      lists_filtermap => fun() -> lists:filtermap(fun(_) ->
+                                                          {true, 0}
+                                                  end, L1), ok end,
+      lists_foreach => fun() -> lists:foreach(fun(_) -> ok end, L1) end,
+      list_iterate => fun() -> list_iterate(fun(_) -> ok end, L1) end,
+      list_deep_iterate => fun() -> deep_improper_iterate(fun(_) ->
+                                                                  ok
+                                                          end, Deep)
+                           end,
+      list_improper_iterate => fun() -> deep_improper_iterate(fun(_) ->
+                                                                      ok
+                                                              end, Improper)
+                               end,
+      lists_foldl => fun() -> lists:foldl(fun(_, _) -> ok end, ok, L1) end,
+      lists_foldr => fun() -> lists:foldr(fun(_, _) -> ok end, ok, L1) end,
+      lists_mapfoldl => fun() -> lists:mapfoldl(fun(_, _) ->
+                                                        {0, ok}
+                                                end, ok, L1), ok end,
+      lists_length => fun() -> length(L1) end,
+      lists_member => fun() -> lists:member(0, L1) end,
+      lists_member_not => fun() -> lists:member(1, L1) end,
+      lists_max => fun() -> lists:max(L1) end,
+      lists_nth_first => fun() -> lists:nth(1, L1) end,
+      lists_nth_middle => fun() -> lists:nth(N div 2, L1) end,
+      lists_nth_last => fun() -> lists:nth(N, L1) end,
+      lists_last => fun() -> lists:last(L1) end,
+      lists_append_one => fun() -> _ = L1 ++ [0], ok end,
+      lists_append_self => fun() -> _ = L1 ++ L1, ok end,
+      lists_zip_self => fun() -> lists:zip(L1, L1), ok end
+     },
+    TestNames = lists:sort(maps:keys(TestFunsMap)),
+    lists:foreach(fun(Name) ->
+                          {Time, _} = timer:tc(maps:get(Name, TestFunsMap)),
+                          io:format("~s: ~B ~s~n",
+                                    [Name, Time,
+                                     unicode:characters_to_binary("μs")]),
+                          erlang:garbage_collect()
+                  end, TestNames).
+
+binary_iterate(F, <<H, T/binary>>) -> F(H), binary_iterate(F, T);
+binary_iterate(_, <<>>) -> ok.
+
+list_iterate(F, [H|T]) -> F(H), list_iterate(F, T);
+list_iterate(_, []) -> ok.
+
+deep_improper_iterate(F, [H|T]) ->
+    deep_improper_iterate(F, H),
+    deep_improper_iterate(F, T);
+deep_improper_iterate(_, []) ->
+    ok;
+deep_improper_iterate(F, X) ->
+    F(X).
